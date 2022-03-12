@@ -76,7 +76,7 @@ def update_dns_file():
     try:
         response = urlh.urlopen(DNS_FILE)
     except:
-        logging.exception("Unable to download the DNS file will use upstream")
+        logger.error("Unable to download the DNS file will use upstream")
     else:
 
         try:
@@ -86,7 +86,7 @@ def update_dns_file():
             with open(DNS_FILE, "w") as f:
                 f.write(response.read())
         except IOError:
-            logging.exception("Failed to write DNS file, check perms")
+            logger.error("Failed to write DNS file, check perms")
 
         restart_dnsmasq()
 
@@ -259,7 +259,6 @@ def detect_device_and_speed():
         output = subprocess.check_output(command, stderr=subprocess.STDOUT)
 
         lines = output.split("\n")
-
         for line in lines:
             match = re.match("(.+)\<Info\>\:\sSpeed\s(\d+);", line.strip())
             if match:
@@ -399,7 +398,7 @@ class Modem(object):
         logger.info("Serial device settings")
         logger.info(" Baud: {}".format(self._serial.baudrate))
         logger.info(" Bytes: {}".format(self._serial.bytesize))
-        logger.info(" Parity".format(self._serial.parity))
+        logger.info(" Parity: {}".format(self._serial.parity))
         logger.info(" StopBits: {}".format(self._serial.stopbits))
         logger.info(" XON/XOFF: {}".format(self._serial.xonxoff))
         logger.info(" RTS/CTS: {}".format(self._serial.rtscts))
@@ -645,10 +644,10 @@ def enable_prom_mode_on_wlan0():
 
     try:
         subprocess.check_call("ifconfig wlan0 promisc".split())
-        logging.info("Promiscuous mode set on wlan0")
+        logger.info("Promiscuous mode set on wlan0")
     except subprocess.CalledProcessError:
-        logging.info("Attempted to set promiscuous mode on wlan0 but was unsuccessful")
-        logging.info("Probably no wifi connected, or using a different device name")
+        logger.info("Attempted to set promiscuous mode on wlan0 but was unsuccessful")
+        logger.info("Probably no wifi connected, or using a different device name")
 
 
 def main():
@@ -659,28 +658,28 @@ def main():
             time.sleep(3)
 
         # Try to update the DNS configuration
-        #update_dns_file()
+        update_dns_file()
 
         # Hack around dodgy Raspberry Pi things
-        #enable_prom_mode_on_wlan0()
+        enable_prom_mode_on_wlan0()
 
         # Just make sure everything is fine
         restart_dnsmasq()
 
         config_server.start()
-        #start_afo_patching()
-        #start_process("dcvoip")
-        #start_process("dcgamespy")
-        #start_process("dc2k2")
+        start_afo_patching()
+        start_process("dcvoip")
+        start_process("dcgamespy")
+        start_process("dc2k2")
         return process()
     except:
         logger.exception("Something went wrong...")
         return 1
     finally:
-        #stop_process("dc2k2")
-        #stop_process("dcgamespy")
-        #stop_process("dcvoip")
-        #stop_afo_patching()
+        stop_process("dc2k2")
+        stop_process("dcgamespy")
+        stop_process("dcvoip")
+        stop_afo_patching()
 
         config_server.stop()
         logger.info("Dreampi quit successfully")
