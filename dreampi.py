@@ -396,6 +396,14 @@ class Modem(object):
         self._serial = serial.Serial(
             "/dev/{}".format(self._device), self._speed, timeout=0
         )
+        logger.info("Serial device settings")
+        logger.info(" Baud: {}".format(self._serial.baudrate))
+        logger.info(" Bytes: {}".format(self._serial.bytesize))
+        logger.info(" Parity".format(self._serial.parity))
+        logger.info(" StopBits: {}".format(self._serial.stopbits))
+        logger.info(" XON/XOFF: {}".format(self._serial.xonxoff))
+        logger.info(" RTS/CTS: {}".format(self._serial.rtscts))
+        logger.info(" DSR/DTR: {}".format(self._serial.dsrdtr))
 
     def disconnect(self):
         if self._serial and self._serial.isOpen():
@@ -404,14 +412,24 @@ class Modem(object):
             logger.info("Serial interface terminated")
 
     def reset(self):
+        logger.info("Initiating Reset")
         self.send_command("ATZ0")  # Send reset command
         self.send_command("ATE0")  # Don't echo our responses
+        self.send_command("ATX0")  # Ignore everything
+
+
+    def autoanswer(self):
+        logger.info("Starting Auto-Answer")
+        self.send_command("ATH0")  # Send reset command
+        self.send_command("ATS0=1")  # Auto answer
+
 
     def start_dial_tone(self):
         if not self._dial_tone_wav:
             return
 
         self.reset()
+        logger.info("Start Dial Tone")
         self.send_command("AT+FCLASS=8")  # Enter voice mode
         self.send_command("AT+VLS=1")  # Go off-hook
         self.send_command("AT+VSM=1,8000")  # 8 bit unsigned PCM
@@ -426,6 +444,7 @@ class Modem(object):
         self._dial_tone_counter = 0
 
     def stop_dial_tone(self):
+        logger.info("Stop Dial Tone")
         if not self._sending_tone:
             return
 
@@ -437,6 +456,8 @@ class Modem(object):
 
     def answer(self):
         self.reset()
+
+        logger.info("Answering Call")
         # When we send ATA we only want to look for CONNECT. Some modems respond OK then CONNECT
         # and that messes everything up
         self.send_command("ATA", ignore_responses=["OK"])
@@ -448,7 +469,7 @@ class Modem(object):
     def send_command(self, command, timeout=60, ignore_responses=None):
         ignore_responses = ignore_responses or []  # Things to completely ignore
 
-        VALID_RESPONSES = ["OK", "ERROR", "CONNECT", "VCON"]
+        VALID_RESPONSES = ["OK", "ERROR", "CONNECT", "VCON","RING"]
 
         for ignore in ignore_responses:
             VALID_RESPONSES.remove(ignore)
@@ -470,8 +491,6 @@ class Modem(object):
             for resp in VALID_RESPONSES:
                 if resp in line.decode('utf-8'):
                     logger.info(resp)
-                    #logger.info(line[line.find(resp):])
-                    pass
                     return  # We are done
 
             if (datetime.now() - start).total_seconds() > timeout:
@@ -554,6 +573,9 @@ def process():
     modem.connect()
     if dial_tone_enabled:
         modem.start_dial_tone()
+    else:
+        modem.reset()
+        modem.autoanswer()
 
     time_digit_heard = None
 
