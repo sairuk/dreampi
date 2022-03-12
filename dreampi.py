@@ -140,7 +140,7 @@ def start_process(name):
         with open(os.devnull, 'wb') as devnull:
             subprocess.check_call(["service", name, "start"], stdout=devnull)
     except (subprocess.CalledProcessError, IOError):
-        logging.warning("Unable to start the {} process".format(name))
+        logger.warning("Unable to start the {} process".format(name))
 
 
 def stop_process(name):
@@ -149,7 +149,7 @@ def stop_process(name):
         with open(os.devnull, 'wb') as devnull:
             subprocess.check_call(["service", name, "stop"], stdout=devnull)
     except (subprocess.CalledProcessError, IOError):
-        logging.warning("Unable to stop the {} process".format(name))
+        logger.warning("Unable to stop the {} process".format(name))
 
 
 def get_default_iface_name_linux():
@@ -524,7 +524,7 @@ class GracefulKiller(object):
         signal.signal(signal.SIGTERM, self.exit_gracefully)
 
     def exit_gracefully(self, signum, frame):
-        logging.warning("Received signal: %s", signum)
+        logger.warning("Received signal: %s", signum)
         self.kill_now = True
 
 
