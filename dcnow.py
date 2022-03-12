@@ -5,9 +5,19 @@ import os
 import json
 import time
 import logging
-import urllib
-import urllib2
 import sh
+
+
+# python3 first then python2
+try:
+    import urllib2 as urlh
+except ImportError:
+    import urllib.request as urlh
+
+try:
+    import urllib.parse as urlp
+except:
+    import urllib as urlp
 
 from hashlib import sha256
 
@@ -17,9 +27,7 @@ logger = logging.getLogger('dcnow')
 
 API_ROOT = "https://dcnow-2016.appspot.com"
 UPDATE_END_POINT = "/api/update/{mac_address}/"
-
 UPDATE_INTERVAL = 15
-
 CONFIGURATION_FILE = os.path.expanduser("~/.dreampi.json")
 
 
@@ -60,9 +68,9 @@ class DreamcastNowThread(threading.Thread):
             if dns_query:
                 data["dns_query"] = dns_query
 
-            data = urllib.urlencode(data)
-            req = urllib2.Request(API_ROOT + UPDATE_END_POINT.format(mac_address=mac_address), data, header)
-            urllib2.urlopen(req) # Send POST update
+            data = urlp.urlencode(data)
+            req = Request(API_ROOT + UPDATE_END_POINT.format(mac_address=mac_address), data, header)
+            urlh.urlopen(req) # Send POST update
 
         while self._running:
             try:

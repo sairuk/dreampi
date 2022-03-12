@@ -13,9 +13,13 @@ import sh
 import signal
 import re
 import config_server
-import urllib
-import urllib2
 import iptc
+import ipaddress
+
+try:
+    import urllib2 as urlh
+except ImportError:
+    import urllib.request as urlh
 
 from dcnow import DreamcastNowService
 from port_forwarding import PortForwarding
@@ -24,6 +28,7 @@ from datetime import datetime, timedelta
 
 
 DNS_FILE = "https://dreamcast.online/dreampi/dreampi_dns.conf"
+AFO_PATCH_FILE = "http://dreamcast.online/afo.txt"
 
 
 logger = logging.getLogger('dreampi')
@@ -57,40 +62,45 @@ def check_internet_connection():
 
 
 def restart_dnsmasq():
-    subprocess.call("sudo service dnsmasq restart".split())
+    subprocess.call("service dnsmasq restart".split())
 
 
 def update_dns_file():
+
     """
         Download a DNS settings file for the DreamPi configuration (avoids forwarding requests to the main DNS server
         and provides a backup if that ever goes down)
     """
+    response = None
+    logger.info("Downloading DNS config from {}".format(DNS_FILE))
     try:
-        response = urllib2.urlopen(DNS_FILE)
-        # Stop the server
-        subprocess.check_call("sudo service dnsmasq stop".split())
+        response = urlh.urlopen(DNS_FILE)
+    except:
+        logging.exception("Unable to download the DNS file will use upstream")
+    else:
 
-        # Update the configuration
-        with open("/etc/dnsmasq.d/dreampi.conf", "w") as f:
-            f.write(response.read())
+        try:
+            # Update the configuration
+            DNS_CONF = "/etc/dnsmasq.d/dreampi.conf"
+            logger.info("Writing DNS config {}".format(DNS_CONF))
+            with open(DNS_FILE, "w") as f:
+                f.write(response.read())
+        except IOError:
+            logging.exception("Failed to write DNS file, check perms")
 
-        # Start the server again
-        subprocess.check_call("sudo service dnsmasq start".split())
-    except (urllib2.URLError, urllib2.HTTPError, IOError):
-        logging.exception("Unable to update the DNS file for some reason, will use upstream")
-        pass
+        restart_dnsmasq()
+
+    return None
 
 
 afo_patcher = None
-
-
 def start_afo_patching():
     global afo_patcher
 
     def fetch_replacement_ip():
-        url = "http://dreamcast.online/afo.txt"
+        url = AFO_PATCH_FILE
         try:
-            return urllib.urlopen(url).read().strip()
+            return urlh.urlopen(url).read().strip()
         except IOError:
             return None
 
@@ -107,7 +117,7 @@ def start_afo_patching():
     rule.protocol = "tcp"
     rule.dst = "63.251.242.131"
     rule.create_target("DNAT")
-    rule.target.to_destination = replacement
+    rule.target.to_destination = replacement.decode('ascii')
 
     chain.append_rule(rule)
 
@@ -128,7 +138,7 @@ def start_process(name):
     try:
         logger.info("Starting {} process - Thanks Jonas Karlsson!".format(name))
         with open(os.devnull, 'wb') as devnull:
-            subprocess.check_call(["sudo", "service", name, "start"], stdout=devnull)
+            subprocess.check_call(["service", name, "start"], stdout=devnull)
     except (subprocess.CalledProcessError, IOError):
         logging.warning("Unable to start the {} process".format(name))
 
@@ -137,7 +147,7 @@ def stop_process(name):
     try:
         logger.info("Stopping {} process".format(name))
         with open(os.devnull, 'wb') as devnull:
-            subprocess.check_call(["sudo", "service", name, "stop"], stdout=devnull)
+            subprocess.check_call(["service", name, "stop"], stdout=devnull)
     except (subprocess.CalledProcessError, IOError):
         logging.warning("Unable to stop the {} process".format(name))
 
@@ -157,8 +167,10 @@ def get_default_iface_name_linux():
 
 def ip_exists(ip, iface):
     command = ["arp", "-a", "-i", iface]
-    output = subprocess.check_output(command)
-    if ("(%s)" % ip) in output:
+    output = subprocess.check_output(command).decode('utf-8').split('\n')
+    return False
+
+    if "%s" % ip in output:
         logger.info("IP existed at %s", ip)
         return True
     else:
@@ -168,7 +180,10 @@ def ip_exists(ip, iface):
 
 def find_next_unused_ip(start):
     interface = get_default_iface_name_linux()
-
+    try:
+        start = start.decode('utf-8')
+    except:
+        pass
     parts = [int(x) for x in start.split(".")]
     current_check = parts[-1] - 1
 
@@ -191,7 +206,7 @@ def autoconfigure_ppp(device, speed):
     """
 
     gateway_ip = subprocess.check_output("route -n | grep 'UG[ \t]' | awk '{print $2}'", shell=True)
-    subnet = gateway_ip.split(".")[:3]
+    subnet = gateway_ip.split(b'.')[:3]
 
     PEERS_TEMPLATE = """
 {device}
@@ -208,7 +223,7 @@ ktune
 noccp
     """.strip()
 
-    this_ip = find_next_unused_ip(".".join(subnet) + ".100")
+    this_ip = find_next_unused_ip(b".".join(subnet) + b".254")
     dreamcast_ip = find_next_unused_ip(this_ip)
 
     logger.info("Dreamcast IP: {}".format(dreamcast_ip))
@@ -438,13 +453,13 @@ class Modem(object):
         for ignore in ignore_responses:
             VALID_RESPONSES.remove(ignore)
 
-        final_command = "%s\r\n" % command
+        final_command = bytes("%s\r" % command, encoding='utf8')
         self._serial.write(final_command)
-        logger.info(final_command)
+        logger.info(final_command.decode('utf-8'))
 
         start = datetime.now()
 
-        line = ""
+        line = bytes("", encoding='utf8')
         while True:
             new_data = self._serial.readline().strip()
 
@@ -453,8 +468,10 @@ class Modem(object):
 
             line = line + new_data
             for resp in VALID_RESPONSES:
-                if resp in line:
-                    logger.info(line[line.find(resp):])
+                if resp in line.decode('utf-8'):
+                    logger.info(resp)
+                    #logger.info(line[line.find(resp):])
+                    pass
                     return  # We are done
 
             if (datetime.now() - start).total_seconds() > timeout:
@@ -500,7 +517,7 @@ def process():
 
     # Make sure pppd isn't running
     with open(os.devnull, 'wb') as devnull:
-        subprocess.call(["sudo", "killall", "pppd"], stderr=devnull)
+        subprocess.call(["killall", "pppd"], stderr=devnull)
 
     device_and_speed, internet_connected = None, False
 
@@ -605,7 +622,7 @@ def enable_prom_mode_on_wlan0():
     """
 
     try:
-        subprocess.check_call("sudo ifconfig wlan0 promisc".split())
+        subprocess.check_call("ifconfig wlan0 promisc".split())
         logging.info("Promiscuous mode set on wlan0")
     except subprocess.CalledProcessError:
         logging.info("Attempted to set promiscuous mode on wlan0 but was unsuccessful")
@@ -620,28 +637,28 @@ def main():
             time.sleep(3)
 
         # Try to update the DNS configuration
-        update_dns_file()
+        #update_dns_file()
 
         # Hack around dodgy Raspberry Pi things
-        enable_prom_mode_on_wlan0()
+        #enable_prom_mode_on_wlan0()
 
         # Just make sure everything is fine
         restart_dnsmasq()
 
         config_server.start()
-        start_afo_patching()
-        start_process("dcvoip")
-        start_process("dcgamespy")
-        start_process("dc2k2")
+        #start_afo_patching()
+        #start_process("dcvoip")
+        #start_process("dcgamespy")
+        #start_process("dc2k2")
         return process()
     except:
         logger.exception("Something went wrong...")
         return 1
     finally:
-        stop_process("dc2k2")
-        stop_process("dcgamespy")
-        stop_process("dcvoip")
-        stop_afo_patching()
+        #stop_process("dc2k2")
+        #stop_process("dcgamespy")
+        #stop_process("dcvoip")
+        #stop_afo_patching()
 
         config_server.stop()
         logger.info("Dreampi quit successfully")

@@ -3,7 +3,11 @@ import threading
 import cgi
 import os
 
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+try:
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+except ImportError:
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
 from dcnow import CONFIGURATION_FILE, scan_mac_address
 
 
