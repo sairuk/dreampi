@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import threading
 import os
@@ -33,7 +33,7 @@ CONFIGURATION_FILE = os.path.expanduser("~/.dreampi.json")
 
 def scan_mac_address():
     mac = get_mac()
-    return sha256(':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2))).hexdigest()
+    return sha256(':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2)).encode('utf-8')).hexdigest()
 
 
 class DreamcastNowThread(threading.Thread):

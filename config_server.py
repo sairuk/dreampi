@@ -1,6 +1,9 @@
+#!/usr/bin/env python3
+
 import json
 import threading
 import cgi
+import urllib.parse
 import os
 
 try:
@@ -14,12 +17,12 @@ from dcnow import CONFIGURATION_FILE, scan_mac_address
 class DreamPiConfigurationService(BaseHTTPRequestHandler):
 
     def _get_post_data(self):
-        ctype, pdict = cgi.parse_header(self.headers.getheader('content-type'))
+        ctype, pdict = cgi.parse_header(self.headers['content-type'])
         if ctype == 'multipart/form-data':
             postvars = cgi.parse_multipart(self.rfile, pdict)
         elif ctype == 'application/x-www-form-urlencoded':
-            length = int(self.headers.getheader('content-length'))
-            postvars = cgi.parse_qs(self.rfile.read(length), keep_blank_values=1)
+            length = int(self.headers['content-length'])
+            postvars = urllib.parse.parse_qs(self.rfile.read(length), keep_blank_values=1)
         else:
             postvars = {}
 
@@ -36,10 +39,11 @@ class DreamPiConfigurationService(BaseHTTPRequestHandler):
             with open(CONFIGURATION_FILE, "r") as f:
                 enabled_state = json.loads(f.read())["enabled"]
 
-        self.wfile.write(json.dumps({
+        data = json.dumps({
             "mac_address": scan_mac_address(),
             "is_enabled": enabled_state
-        }))
+        })
+        self.wfile.write(bytes(data, encoding='utf8'))
 
 
     def do_POST(self):
@@ -59,10 +63,12 @@ class DreamPiConfigurationService(BaseHTTPRequestHandler):
         with open(CONFIGURATION_FILE, "w") as f:
             f.write(json.dumps({"enabled": enabled_state}))
 
-        self.wfile.write(json.dumps({
+        data = json.dumps({
             "mac_address": scan_mac_address(),
             "is_enabled": enabled_state
-        }))
+        })
+
+        self.wfile.write(bytes(data, encoding='utf8'))
 
 
 server = None
