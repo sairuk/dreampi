@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#dreampi.py_version=202402202004
 
 from __future__ import absolute_import
 from __future__ import print_function
@@ -31,6 +32,7 @@ DNS_FILE = "https://dreamcast.online/dreampi/dreampi_dns.conf"
 logger = logging.getLogger("dreampi")
 
 def updater():
+    # REVIEW
     return
 
 def check_internet_connection():
@@ -95,18 +97,40 @@ def update_dns_file():
     subprocess.check_call("sudo service dnsmasq start".split())
 
 def dreampi_py_local_update():
+    # REVIEW
     return
 
 def add_increased_ttl():
-    return
+    table = iptc.Table(iptc.Table.MANGLE)
+    chain = iptc.Chain(table, "PREROUTING")
+
+    rule = iptc.Rule()
+    rule.in_interface = "ppp0"
+    rule.create_target("TTL").ttl_set = str(64)
+
+    chain.insert_rule(rule)
+
+    logger.info("DC TTL increased from 30 to 64")
+    return rule
 
 def remove_increased_ttl():
+    if ttl_rule:
+        table = iptc.Table(iptc.Table.MANGLE)
+        chain = iptc.Chain(table, "PREROUTING")
+        chain.delete_rule(ttl_rule)
+        logger.info("DC TTL removed")
     return
 
 def start_dnat_rules():
+    # REVIEW
     return
 
 def remove_dnat_rule(drule=False):
+    if drule:
+        table = iptc.Table(iptc.Table.NAT)
+        chain = iptc.Chain(table, "PREROUTING")
+        chain.delete_rule(drule)
+        logger.info("DNAT rule removed")
     return
 
 def start_afo_patching():
@@ -474,9 +498,17 @@ class Modem(object):
         logger.info("Connected")
 
     def netlink_answer(self):
+        self.reset()
+        # When we send ATA we only want to look for CONNECT. Some modems respond OK then CONNECT
+        # and that messes everything up
+        self.send_command(b"ATA", ignore_responses=[b"OK"])
+        # time.sleep(5)
+        logger.info("Call answered!")
+        logger.info("Connected")
         return
 
     def query_modem(self, command, timeout=3, response = "OK"):
+        # REVIEW
         return
 
     def send_command(
@@ -524,6 +556,12 @@ class Modem(object):
         time.sleep(1.0)
 
     def shake_it_off(self): #sometimes the modem gets stuck in data mode
+        for i in range(3):
+            self._serial.write(b'+')
+            time.sleep(0.2)
+        time.sleep(4)
+        self.send_command('ATH0') #make sure we're on hook
+        logger.info("Shook it off")
         return
 
     def update(self):
@@ -564,7 +602,19 @@ class GracefulKiller(object):
         self.kill_now = True
 
 def do_netlink():
-    return
+    # ser = serial.Serial(device_and_speed[0], device_and_speed[1], timeout=0.005)
+    state, opponent  = netlink.netlink_setup(side,dial_string,modem)
+    if state == "failed":
+        for i in range(3):
+            modem._serial.write(b'+')
+            time.sleep(0.2)
+        time.sleep(4)
+        modem.send_command(b'ATH0')
+        return
+    if saturn == False:
+        netlink.kddi_exchange(side,state,opponent,ser=modem._serial)
+    else:
+        netlink.netlink_exchange(side,state,opponent,ser=modem._serial)
 
 def process():
 
