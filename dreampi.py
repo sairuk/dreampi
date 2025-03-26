@@ -945,7 +945,7 @@ def main():
             logger.info("Waiting for internet connection...")
             time.sleep(3)
 
-        
+
         #try auto updates /disabled for now
         updater()
         global xband
