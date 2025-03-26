@@ -26,12 +26,12 @@ from port_forwarding import PortForwarding
 
 from datetime import datetime, timedelta
 
-
 DNS_FILE = "https://dreamcast.online/dreampi/dreampi_dns.conf"
-
 
 logger = logging.getLogger("dreampi")
 
+def updater():
+    return
 
 def check_internet_connection():
     """ Returns True if there's a connection """
@@ -94,6 +94,20 @@ def update_dns_file():
     # Start the server again
     subprocess.check_call("sudo service dnsmasq start".split())
 
+def dreampi_py_local_update():
+    return
+
+def add_increased_ttl():
+    return
+
+def remove_increased_ttl():
+    return
+
+def start_dnat_rules():
+    return
+
+def remove_dnat_rule(drule=False):
+    return
 
 def start_afo_patching():
     global afo_patcher
@@ -209,6 +223,8 @@ def autoconfigure_ppp(device, speed) -> str:
 
     OPTIONS_TEMPLATE = "debug\n" "ms-dns {this_ip}\n" "proxyarp\n" "ktune\n" "noccp\n"
 
+    PAP_SECRETS_TEMPLATE = "# Modded from dreampi.py\n" "# INBOUND connections\n" '*       *       ""      *' "\n"
+
     this_ip = find_next_unused_ip(".".join(subnet) + ".100")
     dreamcast_ip = find_next_unused_ip(this_ip)
 
@@ -226,12 +242,15 @@ def autoconfigure_ppp(device, speed) -> str:
     with open("/etc/ppp/options", "w") as f:
         f.write(options_content)
 
+    pap_secrets_content = PAP_SECRETS_TEMPLATE
+
+    with open("/etc/ppp/pap-secrets", "w") as f:
+        f.write(pap_secrets_content)
+
     return dreamcast_ip
 
 
-ENABLE_SPEED_DETECTION = (
-    False
-)  # Set this to true if you want to use wvdialconf for device detection
+ENABLE_SPEED_DETECTION = False # Set this to true if you want to use wvdialconf for device detection
 
 
 def detect_device_and_speed() -> Optional[Tuple[str, int]]:
@@ -241,7 +260,7 @@ def detect_device_and_speed() -> Optional[Tuple[str, int]]:
         # By default we don't detect the speed or device as it's flakey in later
         # Pi kernels. But it might be necessary for some people so that functionality
         # can be enabled by setting the flag above to True
-        return ("ttyACM0", MAX_SPEED)
+        return ("/dev/ttyACM0", MAX_SPEED)
 
     command = ["wvdialconf", "/dev/null"]
 
@@ -385,30 +404,47 @@ class Modem(object):
 
         logger.info("Opening serial interface to {}".format(self._device))
         self._serial = serial.Serial(
-            "/dev/{}".format(self._device), self._speed, timeout=0
+            "{}".format(self._device), self._speed, timeout=0
         )
         return self._serial
 
     def disconnect(self):
         if self._serial and self._serial.isOpen():
+            self._serial.flush()
             self._serial.close()
             self._serial = None
             logger.info("Serial interface terminated")
 
     def reset(self):
-        self.send_command(b"ATZ0")  # Send reset command
-        self.send_command(b"ATE0")  # Don't echo our responses
+        while True:
+            try:
+                self.send_command("ATZ0",timeout=3)  # Send reset command
+                time.sleep(1)
+                self.send_command("AT&F0")
+                self.send_command("ATE0W2")  # Don't echo our responses
+                return
+            except IOError:
+                self.shake_it_off() # modem isn't responding. Try a harder reset
 
-    def start_dial_tone(self):
+    def start_dial_tone(self, retries=3):
         if not self._dial_tone_wav:
             return
 
-        self.reset()
-        self.send_command(b"AT+FCLASS=8")  # Enter voice mode
-        self.send_command(b"AT+VLS=1")  # Go off-hook
-        self.send_command(b"AT+VSM=1,8000")  # 8 bit unsigned PCM
-        self.send_command(b"AT+VTX")  # Voice transmission mode
-
+        retry = 0
+        while retry < retries:
+            try:
+                self.reset()
+                self.send_command(b"AT+FCLASS=8")  # Enter voice mode
+                self.send_command(b"AT+VLS=1")  # Go off-hook
+                self.send_command(b"AT+VSM=1,8000")  # 8 bit unsigned PCM
+                self.send_command(b"AT+VTX")  # Voice transmission mode
+                logger.info("<LISTENING>")
+                break
+            except IOError:
+                time.sleep(0.5)
+                retry+=1
+                pass
+ 
         self._sending_tone = True
 
         self._time_since_last_dial_tone = datetime.now() - timedelta(seconds=100)
@@ -436,6 +472,12 @@ class Modem(object):
         logger.info("Call answered!")
         logger.info(subprocess.check_output(["pon", "dreamcast"]).decode())
         logger.info("Connected")
+
+    def netlink_answer(self):
+        return
+
+    def query_modem(self, command, timeout=3, response = "OK"):
+        return
 
     def send_command(
         self, command: bytes, timeout=60, ignore_responses: Optional[List[bytes]] = None
@@ -481,6 +523,9 @@ class Modem(object):
         self._serial.write(b"+++")
         time.sleep(1.0)
 
+    def shake_it_off(self): #sometimes the modem gets stuck in data mode
+        return
+
     def update(self):
         now = datetime.now()
         if self._sending_tone:
@@ -518,8 +563,18 @@ class GracefulKiller(object):
         logging.warning("Received signal: %s", signum)
         self.kill_now = True
 
+def do_netlink():
+    return
 
 def process():
+
+    xbandnums = ["18002071194","19209492263","0120717360","0355703001"]
+    
+    xbandMatching = False
+    xbandTimer = None
+    xbandInit = False
+    openXband = False
+
     killer = GracefulKiller()
 
     dial_tone_enabled = "--disable-dial-tone" not in sys.argv
@@ -566,6 +621,8 @@ def process():
 
     time_digit_heard = None
 
+    global saturn
+    saturn = True
     dcnow = DreamcastNowService()
 
     while True:
@@ -575,6 +632,30 @@ def process():
         now = datetime.now()
 
         if mode == "LISTENING":
+
+            if xbandMatching == True:
+                if xbandInit == False:
+                    xband.xbandInit()
+                    xbandInit = True
+                if time.time() - xbandTimer > 900: #Listen for incoming connections for 15 minutes
+                    xbandMatching = False
+                    xband.closeXband()
+                    openXband = False
+                    continue
+                if openXband == False:
+                    xband.openXband()
+                    openXband = True
+                xbandResult,opponent = xband.xbandListen(modem)
+                if xbandResult == "connected":
+                    xband.netlink_exchange("waiting","connected",opponent,ser=modem._serial)
+                    logger.info("Xband Disconnected")
+                    mode = "LISTENING"
+                    modem.connect()
+                    modem.start_dial_tone()
+                    xbandMatching = False
+                    xband.closeXband()
+                    openXband = False
+
             modem.update()
             char: bytes = modem_serial.read(1)
             char = char.strip()
@@ -584,16 +665,72 @@ def process():
             if ord(char) == 16:
                 # DLE character
                 try:
-                    char = modem_serial.read(1)
-                    if char.isdigit():
-                        digit = int(char)
-                        logger.info("Heard: %s", digit)
+                    parsed = netlink.digit_parser(modem)
+                    if parsed == "nada":
+                        pass
+                    elif isinstance(parsed,dict):
+                        client = parsed['client']
+                        dial_string = parsed['dial_string']
+                        side = parsed['side']
+                        logger.info("Heard: %s" % dial_string)
+                        
+                        if dial_string in xbandnums:
+                            logger.info("Calling Xband server")
+                            client = "xband"
+                            mode = "XBAND ANSWERING"
 
-                        mode = "ANSWERING"
+                        elif dial_string == "00":
+                            side = "waiting"
+                            client = "direct_dial"
+                            saturn = False
+                        elif dial_string[0:3] == "859":
+                            try:
+                                kddi_opponent = dial_string
+                                kddi_lookup = "https://dial.redreamcast.net/?phoneNumber=%s" % kddi_opponent
+                                response = requests.get(kddi_lookup)
+                                response.raise_for_status()
+                                ip = response.text
+                                if len(ip) == 0:
+                                    pass
+                                else:
+                                    dial_string = ip
+                                    logger.info(dial_string)
+                                    saturn = False
+                                    side = "calling"
+                                    client = "direct_dial"
+                                    time.sleep(7)
+                            except requests.exceptions.HTTPError:
+                                pass
+                        elif len(dial_string.split('*')) == 5 and dial_string.split('*')[-1] == "1":
+                            oppIP = '.'.join(dial_string.split('*')[0:4])
+                            client = "xband"
+                            mode = "NETLINK ANSWERING"
+                            side = "calling"
+                        
+                    
+                        if client == "direct_dial":
+                            mode = "NETLINK ANSWERING"
+                        elif client == "xband":
+                            pass
+                        else:
+                            mode = "ANSWERING"
                         modem.stop_dial_tone()
                         time_digit_heard = now
                 except TypeError as e:
                     logger.exception(e)
+
+        elif mode == "XBAND ANSWERING":
+            # print("xband answering")
+            if (now - time_digit_heard).total_seconds() > 8.0:
+                time_digit_heard = None
+                modem.query_modem("ATA", timeout=60, response = "CONNECT")
+                xband.xbandServer(modem)
+                mode = "LISTENING"
+                modem.connect()
+                modem.start_dial_tone()
+                xbandMatching = True
+                xbandTimer = time.time()
+
         elif mode == "ANSWERING":
             if time_digit_heard is None:
                 raise Exception("Impossible code path")
@@ -602,6 +739,33 @@ def process():
                 modem.answer()
                 modem.disconnect()
                 mode = "CONNECTED"
+
+        elif mode == "NETLINK ANSWERING":
+            if (now - time_digit_heard).total_seconds() > 8.0:
+                time_digit_heard = None
+                
+                try:
+                    if client == "xband":
+                        xband.init_xband(modem)
+                        result = xband.ringPhone(oppIP,modem)
+                        if result == "hangup":
+                            mode = "LISTENING"
+                            modem.connect()
+                            modem.start_dial_tone()
+                        else:
+                            mode = "NETLINK_CONNECTED"
+                    else:
+                        modem.connect_netlink(speed=57600,timeout=0.01,rtscts = True) #non-blocking version
+                        modem.query_modem(b"AT%E0\V1")
+                        if saturn:
+                            modem.query_modem(b'AT%C0\N3')
+                            modem.query_modem(b'AT+MS=V32b,1,14400,14400,14400,14400')
+                        modem.query_modem(b"ATA", timeout=120, response = "CONNECT")
+                        mode = "NETLINK_CONNECTED"
+                except IOError:
+                    modem.connect()
+                    mode = "LISTENING"
+                    modem.start_dial_tone()
 
         elif mode == "CONNECTED":
             dcnow.go_online()
@@ -624,6 +788,15 @@ def process():
             if dial_tone_enabled:
                 modem.start_dial_tone()
 
+        elif mode == "NETLINK_CONNECTED":
+            if client == "xband":
+                xband.netlink_exchange("calling","connected",oppIP,ser=modem._serial)
+            else:
+                do_netlink(side,dial_string,modem,saturn=saturn)
+            logger.info("Netlink Disconnected")
+            mode = "LISTENING"
+            modem.connect()
+            modem.start_dial_tone()
     if port_forwarding is not None:
         port_forwarding.delete_all()
 
@@ -648,12 +821,28 @@ def enable_prom_mode_on_wlan0():
 
 def main():
     afo_patcher_rule = None
+    ttl_rule = None
+    dnat_rules = []
 
     try:
         # Don't do anything until there is an internet connection
         while not check_internet_connection():
             logger.info("Waiting for internet connection...")
             time.sleep(3)
+
+        
+        #try auto updates /disabled for now
+        updater()
+        global xband
+        global netlink
+        try:
+            import xband as xband
+            import netlink as netlink
+        except ImportError:
+            logger.info("couldn't import xband or netlink modules")
+
+        # Dreampi local update check
+        dreampi_py_local_update()
 
         # Try to update the DNS configuration
         update_dns_file()
@@ -666,9 +855,12 @@ def main():
 
         config_server.start()
         afo_patcher_rule = start_afo_patching()
+        dnat_rules = start_dnat_rules()
+        ttl_rule = add_increased_ttl()
         start_service("dcvoip")
         start_service("dcgamespy")
         start_service("dc2k2")
+        start_service("dcdaytona")
         return process()
     except:
         logger.exception("Something went wrong...")
@@ -677,8 +869,14 @@ def main():
         stop_service("dc2k2")
         stop_service("dcgamespy")
         stop_service("dcvoip")
+        start_service("dcdaytona")
         if afo_patcher_rule is not None:
             stop_afo_patching(afo_patcher_rule)
+        if ttl_rule is not None:
+            remove_increased_ttl(ttl_rule)
+        if dnat_rules is not None:
+            for drule in dnat_rules:
+                remove_dnat_rule(drule)
 
         config_server.stop()
         logger.info("Dreampi quit successfully")
