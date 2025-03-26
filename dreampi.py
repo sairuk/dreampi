@@ -122,8 +122,50 @@ def remove_increased_ttl():
     return
 
 def start_dnat_rules():
-    # REVIEW
-    return
+    rules = []
+ 
+    def fetch_replacement_ips():
+        url = "https://shumania.ddns.net/dnat.txt"
+        try:
+            response = urllib.request.urlopen(url)
+        except urllib.error.HTTPError as e:
+            logging.info(
+                f"Did not find remote DNS config (HTTP code {e.code}); will use upstream"
+            )
+            return response.read().strip().decode()
+        except urllib.error.URLError as e:
+            logging.exception(f"HTTP error; will skip adding DNAT rules (HTTP code {e.code})")
+            return None
+
+    data = fetch_replacement_ips()
+    if data is None:
+        logger.info("No DNAT rules added")
+        return None
+
+    for ips in data.splitlines():
+        ip = ips.split()
+        
+        if ip[0] is None:
+            logger.info("Missing SRC in DNAT rule - SKIP")
+            return None
+
+        if ip[1] is None:
+            logger.info("Missing DST in DNAT rule - SKIP")
+            return None
+ 
+        table = iptc.Table(iptc.Table.NAT)
+        chain = iptc.Chain(table, "PREROUTING")
+
+        rule = iptc.Rule()
+        rule.protocol = "tcp"
+        rule.dst = ip[0]
+        rule.create_target("DNAT")
+        rule.target.to_destination = ip[1]
+
+        chain.append_rule(rule)
+        logger.info("DNAT rule appended %s -> %s",ip[0],ip[1])
+        rules.append(rule)
+    return rules
 
 def remove_dnat_rule(drule=False):
     if drule:
@@ -507,8 +549,31 @@ class Modem(object):
         logger.info("Connected")
         return
 
-    def query_modem(self, command, timeout=3, response = "OK"):
-        # REVIEW
+    def query_modem(self, command, timeout=3, response = "OK"): #this function assumes we're being passed a non-blocking modem
+        if isinstance(command, bytes):
+            final_command = command + b'\r\n'
+        else:
+            final_command = ("%s\r\n" % command).encode()      
+        self._serial.write(final_command)
+        logger.info(final_command.decode())
+        start = time.time()
+
+        line = b""
+        while True:
+            new_data = self._serial.readline().strip()
+
+            if not new_data: #non-blocking modem will end up here when timeout reached, try until this function's timeout is reached.
+                if time.time() - start < timeout:
+                    continue
+                raise IOError()
+
+            line = line + new_data
+            
+            if response.encode() in line:
+                if response != "OK":
+                    logger.info(line.decode())
+                return  # Valid response
+
         return
 
     def send_command(
