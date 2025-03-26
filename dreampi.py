@@ -113,7 +113,7 @@ def add_increased_ttl():
     logger.info("DC TTL increased from 30 to 64")
     return rule
 
-def remove_increased_ttl():
+def remove_increased_ttl(ttl_rule=False):
     if ttl_rule:
         table = iptc.Table(iptc.Table.MANGLE)
         chain = iptc.Chain(table, "PREROUTING")
@@ -484,7 +484,7 @@ class Modem(object):
     def reset(self):
         while True:
             try:
-                self.send_command("ATZ0",timeout=3)  # Send reset command
+                self.send_command("ATZ0")  # Send reset command
                 time.sleep(1)
                 self.send_command("AT&F0")
                 self.send_command("ATE0W2")  # Don't echo our responses
