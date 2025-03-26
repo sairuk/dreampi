@@ -955,6 +955,7 @@ def main():
             import netlink as netlink
         except ImportError:
             logger.info("couldn't import xband or netlink modules")
+            exit(1)
 
         # Dreampi local update check
         dreampi_py_local_update()
