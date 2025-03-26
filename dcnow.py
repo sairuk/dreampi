@@ -25,7 +25,6 @@ UPDATE_INTERVAL = 15
 
 CONFIGURATION_FILE = os.path.expanduser("~/.dreampi.json")
 
-
 def hash_mac_address():
     mac = get_mac()
     return sha256(
@@ -117,17 +116,21 @@ class DreamcastNowService(object):
                 self._enabled = content["enabled"]
 
     def go_online(self):
+        logger.info("starting dcnow")
         if not self._enabled:
             return
 
         self.update_mac_address()
         self._thread = DreamcastNowThread(self)
         self._thread.start()
+        logger.info("dcnow started")
 
     def go_offline(self):
         if self._thread is not None:
+            logger.info("stopping dcnow")
             self._thread.stop()
             self._thread = None
+            logger.info("dcnow stopped")
 
     @property
     def enabled(self):
