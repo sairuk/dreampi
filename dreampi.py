@@ -484,10 +484,10 @@ class Modem(object):
     def reset(self):
         while True:
             try:
-                self.send_command("ATZ0")  # Send reset command
+                self.send_command(b"ATZ0")  # Send reset command
                 time.sleep(1)
-                self.send_command("AT&F0")
-                self.send_command("ATE0W2")  # Don't echo our responses
+                self.send_command(b"AT&F0")
+                self.send_command(b"ATE0W2")  # Don't echo our responses
                 return
             except IOError:
                 self.shake_it_off() # modem isn't responding. Try a harder reset
@@ -625,7 +625,7 @@ class Modem(object):
             self._serial.write(b'+')
             time.sleep(0.2)
         time.sleep(4)
-        self.send_command('ATH0') #make sure we're on hook
+        self.send_command(b"ATH0") #make sure we're on hook
         logger.info("Shook it off")
         return
 
