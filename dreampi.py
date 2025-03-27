@@ -484,6 +484,7 @@ class Modem(object):
             self._serial.close()
             self._serial = None
             logger.info("Serial interface terminated")
+            self.reset()
 
     def reset(self):
         while True:
@@ -900,6 +901,8 @@ def process():
                             logger.info("Detected modem hang up, going back to listening")
                             time.sleep(5)  # Give the hangup some time
                             break
+                    if killer.kill_now:
+                        break
 
             dcnow.go_offline()
 
