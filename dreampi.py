@@ -28,8 +28,11 @@ from port_forwarding import PortForwarding
 from datetime import datetime, timedelta
 
 DNS_FILE = "https://dreamcast.online/dreampi/dreampi_dns.conf"
+SERVICES = ["dcvoip","dcgamespy","dc2k2","dcdaytona"]
+
 
 logger = logging.getLogger("dreampi")
+logfile = "/tmp/dreampi.log"
 
 def updater():
     # REVIEW
@@ -885,15 +888,16 @@ def process():
         elif mode == "CONNECTED":
             dcnow.go_online()
 
-            # We start watching /var/log/messages for the hang up message
-            for line in sh.tail(  # type: ignore - sh module is dynamic
-                "-f", "/var/log/messages", "-n", "1", _iter=True
-            ):
-                line: str = line
-                if "Modem hangup" in line:
-                    logger.info("Detected modem hang up, going back to listening")
-                    time.sleep(5)  # Give the hangup some time
-                    break
+            # We start watching log for the hang up message
+            if os.path.exists(logfile):
+                for line in sh.tail(  # type: ignore - sh module is dynamic
+                    "-f", logfile, "-n", "1", _iter=True
+                ):
+                    line: str = line
+                    if "Modem hangup" in line:
+                        logger.info("Detected modem hang up, going back to listening")
+                        time.sleep(5)  # Give the hangup some time
+                        break
 
             dcnow.go_offline()
 
@@ -973,19 +977,15 @@ def main():
         afo_patcher_rule = start_afo_patching()
         dnat_rules = start_dnat_rules()
         ttl_rule = add_increased_ttl()
-        start_service("dcvoip")
-        start_service("dcgamespy")
-        start_service("dc2k2")
-        start_service("dcdaytona")
+        for service in SERVICES:
+            start_service(service)
         return process()
     except:
         logger.exception("Something went wrong...")
         return 1
     finally:
-        stop_service("dc2k2")
-        stop_service("dcgamespy")
-        stop_service("dcvoip")
-        start_service("dcdaytona")
+        for service in SERVICES:
+            stop_service(service)
         if afo_patcher_rule is not None:
             stop_afo_patching(afo_patcher_rule)
         if ttl_rule is not None:
@@ -1000,7 +1000,7 @@ def main():
 
 if __name__ == "__main__":
     logger.setLevel(logging.INFO)
-    syslog_handler = logging.handlers.SysLogHandler(address="/dev/log")
+    syslog_handler = logging.FileHandler(logfile)
     syslog_handler.setFormatter(
         logging.Formatter("%(name)s[%(process)d]: %(levelname)s %(message)s")
     )

@@ -17,6 +17,7 @@ from hashlib import sha256
 from uuid import getnode as get_mac
 
 logger = logging.getLogger("dcnow")
+logfile = "/tmp/dcnow.log"
 
 API_ROOT = "https://dcnow-2016.appspot.com"
 UPDATE_END_POINT = "/api/update/{mac_address}/"
@@ -43,11 +44,15 @@ class DreamcastNowThread(threading.Thread):
             if not self._service.enabled:
                 return
 
-            lines: List[str] = list(
-                sh.tail(  # type: ignore - sh has dynamic members
-                    "/var/log/syslog", "-n", "10", _iter=True
+            if os.path.exists(logfile):
+                lines: List[str] = list(
+                    sh.tail(  # type: ignore - sh has dynamic members
+                        logfile, "-n", "10", _iter=True
+                    )
                 )
-            )
+            else:
+                lines = []
+
             dns_query = None
             for line in lines[::-1]:
                 line: str = line
@@ -97,7 +102,7 @@ class DreamcastNowService(object):
         self.reload_settings()
 
         logger.setLevel(logging.INFO)
-        syslog_handler = logging.handlers.SysLogHandler(address="/dev/log")
+        syslog_handler = logging.FileHandler(logfile)
         syslog_handler.setFormatter(
             logging.Formatter("%(name)s[%(process)d]: %(levelname)s %(message)s")
         )
