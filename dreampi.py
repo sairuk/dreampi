@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 
 DNS_FILE = "https://dreamcast.online/dreampi/dreampi_dns.conf"
 SERVICES = ["dcvoip","dcgamespy","dc2k2","dcdaytona"]
+M_LISTEN = ["Modem hangup", "Serial interface terminated"]
 
 
 logger = logging.getLogger("dreampi")
@@ -539,7 +540,7 @@ class Modem(object):
         self.send_command(b"ATA", ignore_responses=[b"OK"])
         time.sleep(5)
         logger.info("Call answered!")
-        logger.info(subprocess.check_output(["pon", "dreamcast"]).decode())
+        logger.info(f"PON: {subprocess.check_output(['pon', 'dreamcast']).decode()}")
         logger.info("Connected")
 
     def netlink_answer(self):
@@ -558,7 +559,7 @@ class Modem(object):
         else:
             final_command = ("%s\r\n" % command).encode()      
         self._serial.write(final_command)
-        logger.info(final_command.decode())
+        logger.info(f"Final Command: {final_command.decode()}" )
         start = time.time()
 
         line = b""
@@ -574,7 +575,7 @@ class Modem(object):
             
             if response.encode() in line:
                 if response != "OK":
-                    logger.info(line.decode())
+                    logger.info(f"Query Modem: {line.decode()}")
                 return  # Valid response
 
         return
@@ -594,7 +595,7 @@ class Modem(object):
 
         final_command = b"%b\r\n" % command
         self._serial.write(final_command)
-        logger.info(final_command.decode())
+        logger.info(f"Final Command: {final_command.decode()}")
 
         start = datetime.now()
 
@@ -608,7 +609,7 @@ class Modem(object):
             line = line + new_data
             for resp in VALID_RESPONSES:
                 if resp in line:
-                    logger.info(line[line.find(resp) :].decode())
+                    logger.info(f"RESPONSE: {line[line.find(resp) :].decode()}")
                     return  # We are done
 
             if (datetime.now() - start).total_seconds() > timeout:
@@ -812,7 +813,7 @@ def process():
                                     pass
                                 else:
                                     dial_string = ip
-                                    logger.info(dial_string)
+                                    logger.info(f"DIAL STRING: {dial_string}")
                                     saturn = False
                                     side = "calling"
                                     client = "direct_dial"
@@ -835,7 +836,7 @@ def process():
                         modem.stop_dial_tone()
                         time_digit_heard = now
                 except TypeError as e:
-                    logger.exception(e)
+                    logger.exception(f"DLE Character: {e}")
 
         elif mode == "XBAND ANSWERING":
             # print("xband answering")
@@ -894,10 +895,11 @@ def process():
                     "-f", logfile, "-n", "1", _iter=True
                 ):
                     line: str = line
-                    if "Modem hangup" in line:
-                        logger.info("Detected modem hang up, going back to listening")
-                        time.sleep(5)  # Give the hangup some time
-                        break
+                    for entry in M_LISTEN:
+                        if entry in line:
+                            logger.info("Detected modem hang up, going back to listening")
+                            time.sleep(5)  # Give the hangup some time
+                            break
 
             dcnow.go_offline()
 
@@ -984,6 +986,7 @@ def main():
         logger.exception("Something went wrong...")
         return 1
     finally:
+        syslog_handler.close()
         for service in SERVICES:
             stop_service(service)
         if afo_patcher_rule is not None:

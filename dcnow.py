@@ -17,7 +17,7 @@ from hashlib import sha256
 from uuid import getnode as get_mac
 
 logger = logging.getLogger("dcnow")
-logfile = "/tmp/dcnow.log"
+logfile = "/tmp/dreampi.log"
 
 API_ROOT = "https://dcnow-2016.appspot.com"
 UPDATE_END_POINT = "/api/update/{mac_address}/"
