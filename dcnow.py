@@ -44,12 +44,12 @@ class DreamcastNowThread(threading.Thread):
             if not self._service.enabled:
                 return
 
+            # We start watching log for the hang up message
             if os.path.exists(logfile):
-                lines: List[str] = list(
-                    sh.tail(  # type: ignore - sh has dynamic members
-                        logfile, "-n", "10", _iter=True
-                    )
-                )
+                loglines = []
+                with open(logfile, "r") as f:
+                    loglines = f.readlines()
+                    lines = loglines[-10]
             else:
                 lines = []
 

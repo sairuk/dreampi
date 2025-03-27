@@ -14,7 +14,6 @@ import logging.handlers
 import sys
 import time
 import subprocess
-import sh
 import signal
 import re
 import iptc
@@ -29,8 +28,6 @@ from datetime import datetime, timedelta
 
 DNS_FILE = "https://dreamcast.online/dreampi/dreampi_dns.conf"
 SERVICES = ["dcvoip","dcgamespy","dc2k2","dcdaytona"]
-M_LISTEN = ["Modem hangup", "Serial interface terminated"]
-
 
 logger = logging.getLogger("dreampi")
 logfile = "/tmp/dreampi.log"
@@ -559,7 +556,7 @@ class Modem(object):
         else:
             final_command = ("%s\r\n" % command).encode()      
         self._serial.write(final_command)
-        logger.info(f"Final Command: {final_command.decode()}" )
+        logger.info(f"Command: {final_command.decode()}" )
         start = time.time()
 
         line = b""
@@ -595,7 +592,7 @@ class Modem(object):
 
         final_command = b"%b\r\n" % command
         self._serial.write(final_command)
-        logger.info(f"Final Command: {final_command.decode()}")
+        logger.info(f"Command: {final_command.decode()}")
 
         start = datetime.now()
 
@@ -723,6 +720,7 @@ def process():
         time.sleep(5)
 
     modem = Modem(device_and_speed[0], device_and_speed[1], dial_tone_enabled)
+
     dreamcast_ip = autoconfigure_ppp(modem.device_name, modem.device_speed)
 
     # Get a port forwarding object, now that we know the DC IP.
@@ -733,7 +731,6 @@ def process():
         port_forwarding = None
 
     mode = "LISTENING"
-
     modem_serial = modem.connect()
     if dial_tone_enabled:
         modem.start_dial_tone()
@@ -746,6 +743,7 @@ def process():
 
     while True:
         if killer.kill_now:
+            print("Exiting process loop")
             break
 
         now = datetime.now()
@@ -775,11 +773,15 @@ def process():
                     xband.closeXband()
                     openXband = False
 
-            modem.update()
-            char: bytes = modem_serial.read(1)
-            char = char.strip()
-            if not char:
-                continue
+            try:
+                modem.update()
+                char: bytes = modem_serial.read(1)
+                char = char.strip()
+                if not char:
+                    continue
+            except serial.serialutil.PortNotOpenError:
+                logger.error("Port not open, restart modem")
+                break
 
             if ord(char) == 16:
                 # DLE character
@@ -891,15 +893,16 @@ def process():
 
             # We start watching log for the hang up message
             if os.path.exists(logfile):
-                for line in sh.tail(  # type: ignore - sh module is dynamic
-                    "-f", logfile, "-n", "1", _iter=True, bg=True
-                ):
-                    line: str = line
-                    if "Modem hangup" in line:
-                        logger.info("Detected modem hang up, going back to listening")
-                        time.sleep(5)  # Give the hangup some time
-                        logger.close()
+                line = []
+                while "Modem hangup" not in line:
+                    with open(logfile, "r") as f:
+                        loglines = f.readlines()
+                        line = loglines[-1]
+                    if killer.kill_now:
                         break
+
+                logger.info("Detected modem hang up, going back to listening")
+                time.sleep(5)
 
             dcnow.go_offline()
 
@@ -1002,6 +1005,8 @@ def main():
 
 
 if __name__ == "__main__":
+    if os.path.exists(logfile):
+        os.unlink(logfile)
     logger.setLevel(logging.INFO)
     syslog_handler = logging.FileHandler(logfile)
     syslog_handler.setFormatter(
