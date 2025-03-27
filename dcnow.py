@@ -10,7 +10,6 @@ import logging
 import logging.handlers
 import urllib.request
 import urllib.parse
-import sh  # type: ignore - sh module is dynamic
 from typing import List, Optional
 from hashlib import sha256
 
