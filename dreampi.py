@@ -291,7 +291,7 @@ def autoconfigure_ppp(device, speed) -> str:
 
     PEERS_TEMPLATE = "{device}\n" "{device_speed}\n" "{this_ip}:{dc_ip}\n" "noauth\n"
 
-    OPTIONS_TEMPLATE = "debug\n" "ms-dns {this_ip}\n" "proxyarp\n" "ktune\n" "noccp\n"
+    OPTIONS_TEMPLATE = "debug\n" "ms-dns {this_ip}\n" "proxyarp\n" "ktune\n" "noccp\n" f"logfile {logfile}\n"
 
     PAP_SECRETS_TEMPLATE = "# Modded from dreampi.py\n" "# INBOUND connections\n" '*       *       ""      *' "\n"
 
@@ -484,7 +484,6 @@ class Modem(object):
             self._serial.close()
             self._serial = None
             logger.info("Serial interface terminated")
-            self.reset()
 
     def reset(self):
         while True:
@@ -893,15 +892,13 @@ def process():
             # We start watching log for the hang up message
             if os.path.exists(logfile):
                 for line in sh.tail(  # type: ignore - sh module is dynamic
-                    "-f", logfile, "-n", "1", _iter=True
+                    "-f", logfile, "-n", "1", _iter=True, bg=True
                 ):
                     line: str = line
-                    for entry in M_LISTEN:
-                        if entry in line:
-                            logger.info("Detected modem hang up, going back to listening")
-                            time.sleep(5)  # Give the hangup some time
-                            break
-                    if killer.kill_now:
+                    if "Modem hangup" in line:
+                        logger.info("Detected modem hang up, going back to listening")
+                        time.sleep(5)  # Give the hangup some time
+                        logger.close()
                         break
 
             dcnow.go_offline()
